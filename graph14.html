@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Crypto Dashboard Pro</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body{
+      background:#121212;
+      color:white;
+      font-family:Arial;
+      padding:20px;
+      text-align:center;
+    }
+
+    h1{margin-bottom:20px;}
+
+    #crypto-container{
+      display:flex;
+      flex-wrap:wrap;
+      justify-content:center;
+      gap:20px;
+    }
+
+    .card{
+      background:#1e1e1e;
+      padding:15px;
+      border-radius:15px;
+      width:230px;
+      cursor:pointer;
+      transition:0.3s;
+    }
+
+    .card:hover{
+      transform:scale(1.05);
+    }
+
+    canvas{
+      margin-top:15px;
+      display:none;
+    }
+
+    .positive{color:#00ff99;}
+    .negative{color:#ff4d4d;}
+
+    .loading{
+      font-size:14px;
+      margin-top:10px;
+      color:#aaa;
+    }
+  </style>
+</head>
+<body>
+
+<h1>🚀 Crypto Dashboard Pro (Top 10)</h1>
+<p>👉 Clique sur une crypto pour afficher son graphique</p>
+
+<div id="crypto-container"></div>
+
+<script>
+
+const proxy = "https://corsproxy.io/?";
+let charts = {};
+let loadedCharts = {};
+
+async function loadData(){
+  try{
+    const res = await fetch(
+      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=eur&order=market_cap_desc&per_page=10&page=1"
+    );
+
+    const data = await res.json();
+    displayCards(data);
+
+  }catch(error){
+    console.log("Erreur chargement markets :", error);
+  }
+}
+
+function displayCards(data){
+  const container = document.getElementById("crypto-container");
+  container.innerHTML="";
+
+  data.forEach(coin=>{
+    const card=document.createElement("div");
+    card.className="card";
+    card.onclick=()=>toggleChart(coin.id);
+
+    card.innerHTML=`
+      <h3>${coin.name}</h3>
+      <p>${coin.current_price} €</p>
+      <p class="${coin.price_change_percentage_24h>=0?'positive':'negative'}">
+      ${coin.price_change_percentage_24h.toFixed(2)}%</p>
+      <div class="loading" id="loading-${coin.id}"></div>
+      <canvas id="chart-${coin.id}"></canvas>
+    `;
+
+    container.appendChild(card);
+  });
+}
+
+async function toggleChart(id){
+
+  const canvas = document.getElementById(`chart-${id}`);
+  const loadingText = document.getElementById(`loading-${id}`);
+
+  if(canvas.style.display === "block"){
+    canvas.style.display = "none";
+    return;
+  }
+
+  canvas.style.display = "block";
+
+  if(loadedCharts[id]) return;
+
+  try{
+
+    loadingText.innerText = "Chargement du graphique...";
+
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    const res = await fetch(
+      proxy + encodeURIComponent(
+        `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=eur&days=7`
+      )
+    );
+
+    if(!res.ok){
+      loadingText.innerText = "Erreur API";
+      return;
+    }
+
+    const data = await res.json();
+
+    if(!data.prices || data.prices.length < 2){
+      loadingText.innerText = "Pas assez de données";
+      return;
+    }
+
+    loadingText.innerText = "";
+
+    const ctx = canvas.getContext("2d");
+
+    charts[id] = new Chart(ctx,{
+      type:"line",
+      data:{
+        labels:data.prices.map(p=>new Date(p[0]).toLocaleDateString()),
+        datasets:[{
+          data:data.prices.map(p=>p[1]),
+          borderColor:"#00ff99",
+          tension:0.3,
+          fill:false
+        }]
+      },
+      options:{
+        responsive:true,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{display:false}
+        }
+      }
+    });
+
+    loadedCharts[id] = true;
+
+  }catch(error){
+    console.log("Erreur graphique :", error);
+    loadingText.innerText = "Erreur réseau";
+  }
+}
+
+loadData();
+
+</script>
+
+</body>
+</html>
