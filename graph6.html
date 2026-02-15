@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dashboard Crypto Stable</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background-color: #121212;
+      color: white;
+      font-family: Arial, sans-serif;
+      padding: 30px;
+      text-align: center;
+    }
+
+    h1 { margin-bottom: 30px; }
+
+    #crypto-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .card {
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 15px;
+      width: 220px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    }
+
+    .card h2 { margin-bottom: 10px; }
+    .price { font-size: 1.3em; margin: 10px 0; }
+    .positive { color: #00ff99; }
+    .negative { color: #ff4d4d; }
+
+    canvas {
+      margin-top: 20px;
+      background: #1e1e1e;
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    button {
+      margin: 20px 0;
+      padding: 10px 25px;
+      border-radius: 10px;
+      border: none;
+      background: #00ff99;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    button:hover { background: #00cc7a; }
+
+    @media (max-width: 600px) {
+      .card { width: 90%; }
+      canvas { height: 150px !important; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Dashboard Crypto Stable</h1>
+
+<button onclick="getPrices()">Actualiser les prix</button>
+
+<div id="crypto-container"></div>
+
+<script>
+const cryptos = ["bitcoin","ethereum","binancecoin","cardano","solana"];
+const cryptoNames = {
+  bitcoin: "Bitcoin",
+  ethereum: "Ethereum",
+  binancecoin: "Binance Coin",
+  cardano: "Cardano",
+  solana: "Solana"
+};
+
+const container = document.getElementById("crypto-container");
+const charts = {};
+
+// Créer les cartes avec canvas pour chaque crypto
+cryptos.forEach(id => {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.id = "card-" + id;
+  card.innerHTML = `
+    <h2>${cryptoNames[id]}</h2>
+    <h3 class="price">Chargement...</h3>
+    <p class="change"></p>
+    <canvas id="chart-${id}" width="200" height="150"></canvas>
+  `;
+  container.appendChild(card);
+});
+
+// Récupérer les prix et affichage
+async function getPrices() {
+  try {
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${cryptos.join(",")}&vs_currencies=eur&include_24hr_change=true`
+    );
+    if(!response.ok) throw new Error("Erreur API");
+
+    const data = await response.json();
+
+    cryptos.forEach(id => {
+      const price = data[id].eur;
+      const change = data[id].eur_24h_change;
+
+      const card = document.getElementById("card-" + id);
+      card.querySelector(".price").innerText = price + " €";
+      const changeEl = card.querySelector(".change");
+      changeEl.innerText = change.toFixed(2) + " % (24h)";
+      changeEl.className = change >=0 ? "change positive" : "change negative";
+    });
+
+    // Afficher tous les graphiques après les prix
+    updateAllCharts();
+
+  } catch(error) {
+    alert("Impossible de récupérer les prix ! Ouvre avec Live Server ou HTTPS.");
+    console.error(error);
+  }
+}
+
+// Récupérer les données pour chaque graphique (Solana = 7 jours maintenant)
+async function updateAllCharts() {
+  for(const id of cryptos) {
+    try {
+      const days = 7; // Toutes les crypto = 7 jours
+
+      const response = await fetch(
+        `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=eur&days=${days}&interval=daily`
+      );
+      if(!response.ok) throw new Error("Erreur API graphique");
+
+      const data = await response.json();
+      if(!data.prices || data.prices.length === 0) continue;
+
+      const labels = data.prices.map(p => {
+        const date = new Date(p[0]);
+        return `${date.getDate()}/${date.getMonth()+1}`;
+      });
+      const prices = data.prices.map(p => p[1]);
+
+      const ctx = document.getElementById(`chart-${id}`).getContext('2d');
+
+      if(charts[id]) charts[id].destroy();
+
+      charts[id] = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: cryptoNames[id] + " Prix (€)",
+            data: prices,
+            borderColor: '#00ff99',
+            backgroundColor: 'rgba(0,255,153,0.3)',
+            tension: 0.3,
+            fill: true,
+            pointRadius: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            tooltip: {
+              mode: 'index',
+              intersect: false,
+              callbacks: {
+                label: ctx => `Prix : ${ctx.formattedValue} €`
+              }
+            }
+          },
+          scales: {
+            y: { beginAtZero: false, grid: { color: 'rgba(255,255,255,0.1)' } },
+            x: { grid: { color: 'rgba(255,255,255,0.1)' } }
+          }
+        }
+      });
+
+    } catch(error) {
+      console.error(`Erreur graphique pour ${id}:`, error);
+    }
+  }
+}
+
+// Charger les prix et graphiques au démarrage
+getPrices();
+</script>
+
+</body>
+</html>
